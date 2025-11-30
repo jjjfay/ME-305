@@ -1,0 +1,157 @@
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+    1    1                      ;**************************************************************************************
+    2    2                      ;* PS4 main [includes LibV2.2]                                                        *
+    3    3                      ;**************************************************************************************
+    4    4                      ;* Summary:                                                                           *
+    5    5                      ;*   Code for ME 305 PS4                                                              *
+    6    6                      ;*                                                                                    *
+    7    7                      ;* Author: Julia Fay                                                                  *
+    8    8                      ;*   Cal Poly University                                                              *
+    9    9                      ;*   Fall 2023                                                                        *
+   10   10                      ;*                                                                                    *
+   11   11                      ;* Revision History:                                                                  *
+   12   12                      ;*   -                                                                                *
+   13   13                      ;*                                                                                    *
+   14   14                      ;* ToDo:                                                                              *
+   15   15                      ;*   -                                                                                *
+   16   16                      ;**************************************************************************************
+   17   17                      
+   18   18                      ;/------------------------------------------------------------------------------------\
+   19   19                      ;| Include all associated files                                                       |
+   20   20                      ;\------------------------------------------------------------------------------------/
+   21   21                      ; The following are external files to be included during assembly
+   22   22                      
+   23   23                      
+   24   24                      ;/------------------------------------------------------------------------------------\
+   25   25                      ;| External Definitions                                                               |
+   26   26                      ;\------------------------------------------------------------------------------------/
+   27   27                      ; All labels that are referenced by the linker need an external definition
+   28   28                      
+   29   29                                    XDEF  main
+   30   30                      
+   31   31                      ;/------------------------------------------------------------------------------------\
+   32   32                      ;| External References                                                                |
+   33   33                      ;\------------------------------------------------------------------------------------/
+   34   34                      ; All labels from other files must have an external reference
+   35   35                      
+   36   36                                    XREF ENABLE_MOTOR, DISABLE_MOTOR
+   37   37                                    XREF STARTUP_MOTOR, UPDATE_MOTOR, CURRENT_MOTOR
+   38   38                                    XREF STARTUP_PWM, STARTUP_ATD0, STARTUP_ATD1
+   39   39                                    XREF OUTDACA, OUTDACB
+   40   40                                    XREF STARTUP_ENCODER, READ_ENCODER
+   41   41                                    XREF INITLCD, SETADDR, GETADDR, CURSOR_ON, CURSOR_OFF, DISP_OFF
+   42   42                                    XREF OUTCHAR, OUTCHAR_AT, OUTSTRING, OUTSTRING_AT
+   43   43                                    XREF INITKEY, LKEY_FLG, GETCHAR
+   44   44                                    XREF LCDTEMPLATE, UPDATELCD_L1, UPDATELCD_L2
+   45   45                                    XREF LVREF_BUF, LVACT_BUF, LERR_BUF,LEFF_BUF, LKP_BUF, LKI_BUF
+   46   46                                    XREF Entry, ISR_KEYPAD
+   47   47                                  
+   48   48                      ;/------------------------------------------------------------------------------------\
+   49   49                      ;| Assembler Equates                                                                  |
+   50   50                      ;\------------------------------------------------------------------------------------/
+   51   51                      ; Constant values can be equated here
+   52   52                      
+   53   53                      
+   54   54                      ;/------------------------------------------------------------------------------------\
+   55   55                      ;| Variables in RAM                                                                   |
+   56   56                      ;\------------------------------------------------------------------------------------/
+   57   57                      ; The following variables are located in unpaged ram
+   58   58                      
+   59   59                      DEFAULT_RAM:  SECTION
+   60   60                      
+   61   61          0000 0001   Chan0 EQU $01
+   62   62          0000 0040   TIOS  EQU $0040
+   63   63          0000 0049   TCTL2 EQU $0049
+   64   64          0000 004E   TFLG1 EQU $004E
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+   65   65          0000 004C   TMSK1 EQU $004C
+   66   66          0000 0046   TSCR  EQU $0046
+   67   67          0000 0044   TCNTH EQU $0044
+   68   68          0000 0050   TC0   EQU $0050
+   69   69                      
+   70   70                      
+   71   71   000000             INTERVAL DS.W 1
+   72   72                      
+   73   73                      ;/------------------------------------------------------------------------------------\
+   74   74                      ;|  Main Program Code                                                                 |
+   75   75                      ;\------------------------------------------------------------------------------------/
+   76   76                      ; Your code goes here
+   77   77                      
+   78   78                      MyCode: SECTION
+   79   79                      main:
+   80   80                      		   
+   81   81                      		   
+   82   82                      ;Step 1: Pre-initialization
+   83   83                      		   
+   84   84   000000 1803 03E8   		   movw #$03E8, INTERVAL ;Determine the number of bus clock counts that corresponds to 0.1 msec.
+             000004 xxxx       
+   85   85                      		   
+   86   86                      ;Step 2: Timer Initialization
+   87   87                      		   
+   88   88   000006 4C40 01     		   bset TIOS, Chan0   ; Set timer channel 0 for output compare
+   89   89   000009 4C49 01     		   bset TCTL2,Chan0   ; Set timer channel 0 to toggle its output pin
+   90   90   00000C 4C4E 01     		   bset TFLG1, Chan0  ; Clear timer channel flag by writing a 1 to it 
+   91   91   00000F 10EF        		   cli                ; Clear I bit 
+   92   92   000011 4C4C 01     		   bset TMSK1, Chan0  ; enable maskable interrupts 
+   93   93                      		   
+   94   94                      
+   95   95   000014 4C46 A0     		   bset TSCR, %10100000 ; enable timer channel output compare intuerrupts 
+   96   96                      		                        ; sets TEN = 1  (enable timer bit)
+   97   97                      		                        ; sets TSBCK = 1 (timer stop in background mode) 
+   98   98                      
+   99   99                      ;Step 3: Generating the first interrupt		   
+  100  100                      		  
+  101  101   000017 DC44        		   ldd TCNTH            ; read current timer count 
+  102  102   000019 F3xx xx     		   addd INTERVAL        ; add interval to count 
+  103  103   00001C 5C50        		   std TC0              ; load result into TC0 
+  104  104                      		   
+  105  105                      		   		
+  106  106   00001E 20FE        spin: bra spin
+  107  107                          
+  108  108                              
+  109  109                      ;/------------------------------------------------------------------------------------\
+  110  110                      ;| Subroutines |
+  111  111                      ;/------------------------------------------------------------------------------------/
+  112  112                      ; Add subroutines here:
+  113  113                      
+  114  114                      PS4_INT:
+  115  115                      
+  116  116                      ;Step 4: Generating subsequent interrupts
+  117  117                              
+  118  118   000020 DC50                ldd TC0             ; read current timer count  
+  119  119   000022 F3xx xx             addd INTERVAL       ; add interval 
+  120  120   000025 5C50                std TC0             ; store result   
+  121  121   000027 4C4E 01             bset TFLG1, Chan0   ; clear timer channel 0 flag by writing a 1 to it
+  122  122                             
+  123  123                              
+  124  124   00002A 0B                  rti
+  125  125                      ;/------------------------------------------------------------------------------------\
+  126  126                      ;| Messages |
+  127  127                      ;/------------------------------------------------------------------------------------/
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+  128  128                      ; Add ASCII messages here:
+  129  129                      ;/------------------------------------------------------------------------------------\
+  130  130                      ;| Vectors |
+  131  131                      ;\------------------------------------------------------------------------------------/
+  132  132                      ; Add interrupt and reset vectors here:
+  133  133                              ORG $FFFE ; reset vector address
+  134  134  a00FFFE xxxx                DC.W Entry
+  135  135                              
+  136  136                              ORG $FFEE      ;vector address of CH0 Timer Interrupts 
+  137  137  a00FFEE xxxx                DC.W PS4_INT
+  138  138                             
