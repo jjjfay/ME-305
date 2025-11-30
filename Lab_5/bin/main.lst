@@ -1,0 +1,336 @@
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+    1    1                       
+    2    2                      ;**************************************************************************************
+    3    3                      ;* Lab 5 main_ISR                                                                     *
+    4    4                      ;**************************************************************************************
+    5    5                      ;* Summary:                                                                           *
+    6    6                      ;*  This code is designed for use with the 2016 hardware for ME305. This code         *
+    7    7                      ;* implements a proportional plus integral controller on the velocity of the ME 305   *
+    8    8                      ;* dc motor with encoder system.  A full user interface is required.                  *
+    9    9                      ;*                                                                                    *
+   10   10                      ;*                                                                                    *
+   11   11                      ;* Author: William R. Murray, E. Espinoza-Wade and Charlie T. Refvem                  *
+   12   12                      ;*  Cal Poly University                                                               *
+   13   13                      ;*  Fall 2016                                                                         *
+   14   14                      ;*                                                                                    *
+   15   15                      ;* Revision History:                                                                  *
+   16   16                      ;*  CTR 10/03/16                                                                      *
+   17   17                      ;*   - Programmed the ISR that implements the controller, but with no user interface. *
+   18   18                      ;*  WRM 10/09/16                                                                      *
+   19   19                      ;*   - Began to add user interface as time allowed.                                   *
+   20   20                      ;*  WRM 11/12/16                                                                      *
+   21   21                      ;*   - Initial user interface coded, and ready to merge with Charlie's controller.    *
+   22   22                      ;*  WRM 11/17/16                                                                      *
+   23   23                      ;*   - User interface has passed moderate testing.                                    *
+   24   24                      ;*  WRM 12/02/16                                                                      *
+   25   25                      ;*   - Locked out changes in CL/|OL to prevent active data entry needing an <ENT>     *
+   26   26                      ;*       terminate when OL/|CL is pressed, and cleaned up unintentional consequences. *
+   27   27                      ;*  WRM 12/07/16                                                                      *
+   28   28                      ;*   - Added a signed overflow [OVF] to ERR display.                                  *
+   29   29                      ;*  WRM 11/16/17                                                                      *
+   30   30                      ;*   - Changed default gains to reduced values to make headroom for boosting the      *
+   31   31                      ;*       natural frequency.  This is an issue due to the 2-quadrant limitations       *
+   32   32                      ;*       of the VNH5019 motor driver. Kp=1 and Ki=0.45.                               *
+   33   33                      ;*   - Blocked out enabling RUN while entering 1024*Kp or 1024*Ki.                    *
+   34   34                      ;*  WRM 12/06/18                                                                      *
+   35   35                      ;*   - Corrected sign issue in SAT_MULDIV                                             *
+   36   36                      ;*  WRM 01/06/19                                                                      *
+   37   37                      ;*   - Adapted to run with Library V2.1 [changed PWM period to 625]                   *
+   38   38                      ;*  WRM 03/10/19                                                                      *
+   39   39                      ;*   - Changed the default gains for use with Library V2.1                            *
+   40   40                      ;*        [Kp=0.7; Ki=0.225], that is, [1024*Kp=717; 1024*Ki=230]                     *
+   41   41                      ;*  WRM 05/14/22                                                                      *
+   42   42                      ;*   - Tidied up comments and formatting                                              *
+   43   43                      ;*  WRM 05/14/22                                                                      *
+   44   44                      ;*   - Stripped out TCOISR for testing Lab 5 library                                  *
+   45   45                      ;*                                                                                    *
+   46   46                      ;*  ToDo:                                                                             *
+   47   47                      ;*   - Could fool around with making EFF based on the motor current;                  *
+   48   48                      ;*       otherwise, I'm happy ... until more bugs surface.                            *
+   49   49                      ;**************************************************************************************
+   50   50                      
+   51   51                      ;/------------------------------------------------------------------------------------\
+   52   52                      ;| Include all associated files                                                       |
+   53   53                      ;\------------------------------------------------------------------------------------/
+   54   54                      ; The following are external files to be included during assembly          
+   55   55                      
+   56   56                      
+   57   57                      ;/------------------------------------------------------------------------------------\
+   58   58                      ;| External Definitions                                                               |
+   59   59                      ;\------------------------------------------------------------------------------------/
+   60   60                      ; All labels that are referenced by the linker need an external definition
+   61   61                       
+   62   62                                    XDEF  main
+   63   63                                    XDEF  Theta_OLD, RUN, CL, V_ref, KP, KI, UPDATE_FLG1            
+   64   64                      ;/------------------------------------------------------------------------------------\
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+   65   65                      ;| External References                                                                |
+   66   66                      ;\------------------------------------------------------------------------------------/
+   67   67                      ; All labels from other files must have an external reference             
+   68   68                                          
+   69   69                                    XREF  ENABLE_MOTOR, DISABLE_MOTOR
+   70   70                                    XREF  STARTUP_MOTOR, UPDATE_MOTOR, CURRENT_MOTOR 
+   71   71                                    XREF  STARTUP_PWM, STARTUP_ATD0, STARTUP_ATD1   
+   72   72                                    XREF  OUTDACA, OUTDACB
+   73   73                                    XREF  STARTUP_ENCODER, READ_ENCODER
+   74   74                                    XREF  DELAY_MILLI, DELAY_MICRO
+   75   75                                    XREF  INITLCD, SETADDR, GETADDR, CURSOR_ON, CURSOR_OFF, DISP_OFF
+   76   76                                    XREF  OUTCHAR, OUTCHAR_AT, OUTSTRING, OUTSTRING_AT
+   77   77                                    XREF  INITKEY, LKEY_FLG, GETCHAR
+   78   78                                    XREF  LCDTEMPLATE, UPDATELCD_L1, UPDATELCD_L2
+   79   79                                    XREF  LVREF_BUF, LVACT_BUF, LERR_BUF,LEFF_BUF, LKP_BUF, LKI_BUF
+   80   80                                    XREF  Entry, ISR_KEYPAD
+   81   81                                  
+   82   82                      
+   83   83                                    XREF  V_act_DISP, ERR_DISP, EFF_DISP, INTERVAL
+   84   84                                    XREF  IFENTRY, Kscale
+   85   85                      ;/------------------------------------------------------------------------------------\
+   86   86                      ;| Assembler Equates                                                                  |
+   87   87                      ;\------------------------------------------------------------------------------------/
+   88   88                      ; Constant values can be equated here
+   89   89                      
+   90   90                      
+   91   91          0000 004E   TFLG1         EQU   $004E
+   92   92          0000 0050   TC0           EQU   $0050
+   93   93                      
+   94   94          0000 0001   C0F           EQU   %00000001          ; timer channel 0 output compare bit
+   95   95          0000 0240   PORTT         EQU   $0240              ; PORTT pin 8 to be used for interrupt timing
+   96   96                      
+   97   97          FFFF FD8F   LOWER_LIM     EQU   -625               ; number for max reverse duty cycle
+   98   98          0000 0271   UPPER_LIM     EQU   625                ; number for max forward duty cycle
+   99   99                      
+  100  100          0000 7FFF   Max_Pos       EQU $7FFF
+  101  101          0000 8000   Max_Neg       EQU $8000
+  102  102                      
+  103  103                      
+  104  104                      ;/------------------------------------------------------------------------------------\
+  105  105                      ;| Variables in RAM                                                                   |
+  106  106                      ;\------------------------------------------------------------------------------------/
+  107  107                      ; The following variables are located in unpaged ram
+  108  108                      
+  109  109                      DEFAULT_RAM:  SECTION
+  110  110                      
+  111  111   000000             RUN:          DS.B  1                  ; Boolean indicating controller is running
+  112  112   000001             CL:           DS.B  1                  ; Boolean for closed-loop active
+  113  113                      
+  114  114   000002             V_ref:        DS.W  1                  ; reference velocity
+  115  115   000004             V_act:        DS.W  1                  ; actual velocity
+  116  116   000006             Theta_NEW:    DS.W  1                  ; new encoder position
+  117  117   000008             Theta_OLD:    DS.W  1                  ; previous encoder reading
+  118  118   00000A             KP:           DS.W  1                  ; proportional gain
+  119  119   00000C             KI:           DS.W  1                  ; integral gain
+  120  120   00000E             ERR:          DS.W  1                  ; error, where ERR = V_ref - V_act
+  121  121   000010             EFF:          DS.W  1                  ; effort
+  122  122   000012             ESUM:         DS.W  1                  ; accumulated error (area under err vs. t curve)
+  123  123                      
+  124  124   000014             UPDATE_COUNT: DS.B  1                  ; counter for display update
+  125  125   000015             UPDATE_FLG1   DS.B  1                  ; Boolean for display update for line one
+  126  126                      
+  127  127   000016             MOTOR_POWER:  DS.W  1                  ; motor actuation value
+  128  128   000018             P_POWER:      DS.W  1                  ; P-term of motor actuation value
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+  129  129   00001A             I_POWER:      DS.W  1                  ; I-term of motor actuation value
+  130  130                      
+  131  131   00001C             CURRENT:      DS.W  1                  ; motor current in mA
+  132  132   00001E             A_star:       DS.W  1                 ; 
+  133  133                      
+  134  134                      ;/------------------------------------------------------------------------------------\
+  135  135                      ;|  Main Program Code                                                                 |
+  136  136                      ;\------------------------------------------------------------------------------------/
+  137  137                      ; Your code goes here
+  138  138                      
+  139  139                      MyCode:       SECTION
+  140  140                      main:   
+  141  141   000000 16xx xx             jsr IFENTRY
+  142  142                      
+  143  143                             
+  144  144                      
+  145  145   000003 20FE        spin:   bra   spin                     ; endless horizontal loop
+  146  146                      
+  147  147                      
+  148  148                      ;/------------------------------------------------------------------------------------\
+  149  149                      ;| Subroutines                                                                        |
+  150  150                      ;\------------------------------------------------------------------------------------/
+  151  151                      ; General purpose subroutines go here
+  152  152                      
+  153  153                      TC0ISR:
+  154  154   000005 1C02 4080           bset PORTT, $80 ; turn on PORTT pin 8 to begin ISR timing
+  155  155   000009 72xx xx             inc UPDATE_COUNT ; unless UPDATE_COUNT = 0, skip saving
+  156  156   00000C 2617                bne measurements ; display variables
+  157  157   00000E 1804 xxxx           movw V_act, V_act_DISP ; take a snapshot of variables to enable
+             000012 xxxx       
+  158  158   000014 1804 xxxx           movw ERR, ERR_DISP ; consistent display
+             000018 xxxx       
+  159  159   00001A 1804 xxxx           movw EFF, EFF_DISP
+             00001E xxxx       
+  160  160   000020 180B 01xx           movb #$01, UPDATE_FLG1 ; set UPDATE_FLG1 when appropriate
+             000024 xx         
+  161  161                      
+  162  162                      ; Measurements block
+  163  163                      
+  164  164                      measurements:
+  165  165                      
+  166  166                      ; Read encoder value
+  167  167                      
+  168  168   000025 16xx xx             jsr READ_ENCODER ; read encoder position
+  169  169   000028 7Cxx xx             std Theta_NEW ; store it
+  170  170                      
+  171  171                      ; Compute 2-point difference to get speed
+  172  172                      
+  173  173   00002B B3xx xx             subd Theta_OLD ; compute displacement since last reading
+  174  174   00002E 7Cxx xx             std V_act ; store displacement as actual speed
+  175  175   000031 1804 xxxx           movw Theta_NEW, Theta_OLD ; move current reading to previous reading
+             000035 xxxx       
+  176  176                      
+  177  177                      
+  178  178                      ;begin block diagram calculations here 
+  179  179                      
+  180  180                      ;calculate error
+  181  181                      
+  182  182   000037 FCxx xx            ldd V_ref 
+  183  183   00003A B3xx xx            subd V_act 
+  184  184   00003D 7Cxx xx            std ERR             
+  185  185                      
+  186  186                      ;calculate new ESUM 
+  187  187                      
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+  188  188   000040 FDxx xx            ldy ESUM
+  189  189   000043 16xx xx            jsr SDBA 
+  190  190   000046 7Cxx xx            std ESUM 
+  191  191                             
+  192  192                      ;multiply ERR and ESUM by Kp and Ki 
+  193  193                      
+  194  194                            ;ESUM*KI/1024
+  195  195   000049 FDxx xx            ldy KI
+  196  196   00004C 1813               emuls
+  197  197   00004E CE04 00            ldx #$0400 
+  198  198   000051 1814               edivs 
+  199  199   000053 35                 pshy 
+  200  200                      
+  201  201                            ;E*KP/1024
+  202  202   000054 FDxx xx            ldy KP
+  203  203   000057 FCxx xx            ldd ERR
+  204  204   00005A 1813               emuls
+  205  205   00005C CE04 00            ldx #$0400 
+  206  206   00005F 1814               edivs 
+  207  207                           
+  208  208   000061 3A                 puld
+  209  209   000062 16xx xx            jsr SDBA 
+  210  210                             
+  211  211                            ;note, result is in accumulator D 
+  212  212                            
+  213  213                      ;make sure a is in the range of -625 to 625
+  214  214                      
+  215  215   000065 8CFD 8F            cpd  #$FD8F
+  216  216   000068 2C03               bge  skip_low_threshold
+  217  217   00006A CCFD 8F            ldd  #$FD8F
+  218  218                             
+  219  219                      skip_low_threshold:
+  220  220                      
+  221  221   00006D 8C02 71            cpd #$271
+  222  222   000070 2F03               ble skip_high_threshold
+  223  223   000072 CC02 71            ldd #$0271
+  224  224                             
+  225  225                      skip_high_threshold: 
+  226  226                      
+  227  227                            ;leave D as is. now we have a*
+  228  228                            
+  229  229   000075 7Cxx xx            std A_star 
+  230  230                             
+  231  231                            
+  232  232                      ;update motor  
+  233  233                            
+  234  234   000078 F7xx xx            tst RUN
+  235  235   00007B 2715               beq skip_update 
+  236  236   00007D 16xx xx            jsr UPDATE_MOTOR 
+  237  237                                         
+  238  238                      ;calculate effort 
+  239  239   000080 FCxx xx            ldd A_star
+  240  240   000083 CD00 64            ldy #$0064
+  241  241   000086 1813               emuls 
+  242  242   000088 CE02 71            ldx #$0271 
+  243  243   00008B 1814               edivs
+  244  244   00008D 7Dxx xx            sty EFF
+  245  245   000090 200C               bra end 
+  246  246                             
+  247  247                      skip_update:
+  248  248                      
+  249  249   000092 CC00 00            ldd #$0000
+  250  250   000095 7Cxx xx            std EFF
+  251  251   000098 16xx xx            jsr UPDATE_MOTOR
+
+Freescale HC12-Assembler 
+(c) Copyright Freescale 1987-2010
+
+ Abs. Rel.   Loc    Obj. code   Source line
+ ---- ----   ------ ---------   -----------
+  252  252                              
+  253  253   00009B 79xx xx            clr ESUM 
+  254  254                             
+  255  255                      end: 
+  256  256                             
+  257  257                      ;setup next interrupt 
+  258  258                             
+  259  259   00009E FCxx xx            ldd V_act
+  260  260   0000A1 CD00 0D            ldy #$000D
+  261  261   0000A4 1813               emuls
+  262  262   0000A6 C308 00            addd #$0800
+  263  263   0000A9 16xx xx            jsr OUTDACA
+  264  264   0000AC DC50               ldd TC0                ; read current timer count  
+  265  265   0000AE F3xx xx            addd INTERVAL          ; add interval 
+  266  266   0000B1 5C50               std TC0                ; store result  
+  267  267   0000B3 4C4E 01            bset TFLG1, $01        ; clear timer channel 0 flag by writing a 1 to it
+  268  268                                     
+  269  269   0000B6 0B                 rti
+  270  270                      
+  271  271                      SDBA:
+  272  272                      
+  273  273   0000B7 35                  pshy ; push one operand to the stack to enable addd
+  274  274   0000B8 E380                addd 0, SP ; add the two numbers
+  275  275   0000BA 280C                bvc DONE ; exit if no overflow
+  276  276   0000BC E780                tst 0, SP ; if overflow, determine sign of operands
+  277  277   0000BE 2B05                bmi NEG ; and saturate accordingly
+  278  278   0000C0 CC7F FF             ldd #Max_Pos
+  279  279   0000C3 2003                bra DONE
+  280  280                      
+  281  281   0000C5 CC80 00     NEG:    ldd #Max_Neg
+  282  282                      
+  283  283                      DONE:   
+  284  284                      
+  285  285   0000C8 1B81                ins
+  286  286   0000CA 1B81                ins
+  287  287   0000CC 3D                  rts
+  288  288                      
+  289  289                      
+  290  290                      ;/------------------------------------------------------------------------------------\  
+  291  291                      ;| Vectors                                                                            | 
+  292  292                      ;\------------------------------------------------------------------------------------/
+  293  293                      
+  294  294                      ; Add interrupt and reset vectors here:
+  295  295                      
+  296  296                               ORG  $FFFE                    ; reset vector address
+  297  297  a00FFFE xxxx                 DC.W Entry
+  298  298                               
+  299  299                               ORG   $FFEE
+  300  300  a00FFEE xxxx                 DC.W  TC0ISR
+  301  301                      
