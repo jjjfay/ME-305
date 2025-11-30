@@ -1,12 +1,12 @@
 ;**************************************************************************************
-;* Blank Project Main [includes LibV2.2]                                              *
+;* PS 5 Main [includes LibV2.2]                                                       *
 ;**************************************************************************************
 ;* Summary:                                                                           *
 ;*   -                                                                                *
 ;*                                                                                    *
-;* Author: YOUR NAME                                                                  *
+;* Author: Julia Fay                                                                  *
 ;*   Cal Poly University                                                              *
-;*   Spring 2022                                                                      *
+;*   Fall 2023                                                                        *
 ;*                                                                                    *
 ;* Revision History:                                                                  *
 ;*   -                                                                                *
@@ -59,6 +59,7 @@
 
 DEFAULT_RAM:  SECTION
 
+TMP DS.B 1
 
 
 ;/------------------------------------------------------------------------------------\
@@ -69,13 +70,55 @@ DEFAULT_RAM:  SECTION
 MyCode:       SECTION
 main:   
         
-spin:   bra   spin                     ; endless horizontal loop
+        
+       ldd #$9C40
+       ldy #$9C40
+loop: 
+       bgnd 
+       jsr sat_add 
+        
+        
+        
+        
+        
+spin:   bra   loop                    ; endless horizontal loop
 
 
 ;/------------------------------------------------------------------------------------\
 ;| Subroutines                                                                        |
 ;\------------------------------------------------------------------------------------/
 ; General purpose subroutines go here
+
+ sat_add: 
+ 
+ ;push registers to the stack to maintain them
+ 
+       pshx 
+       
+ ;add the contents of d and y 
+ 
+       sty TMP
+       addd TMP 
+       
+ ;check if there is an overflow  and if its negative or positive 
+ ;if there is, saturate d with either -32,768 or 32,767 
+ ;if not, keep the results     
+ 
+       bvc skip_overflow 
+       bpl skip_negative 
+       ldd #$8000        
+        
+ skip_negative: 
+             
+       ldd #$7FFF  
+
+ ;restore the registers from the stack 
+ 
+ skip_overflow: 
+ 
+        pulx  
+        rts 
+
 
 
 ;/------------------------------------------------------------------------------------\

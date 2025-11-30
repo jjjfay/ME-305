@@ -1,5 +1,5 @@
-
-PROGRAM "C:\Users\erwade\Downloads\blank_project\bin\Project.abs"
+*** EVALUATION ***
+PROGRAM "C:\Users\julia\OneDrive\Local Github\ME-305\PS5\bin\Project.abs"
 
 *********************************************************************************************
 TARGET SECTION
@@ -30,8 +30,9 @@ Section Name                    Size  Type     From       To       Segment
 ---------------------------------------------------------------------------------------------
 .init                            227     R     0xC000     0xC0E2   ROM_C000
 .stack                          1024   R/W     0x2000     0x23FF   RAM
+.data                              1   R/W     0x2400     0x2400   RAM
 LIBRARY_RAM                        3   R/W     0x1000     0x1002   LIBRAM
-MyCode                             2     R     0x4000     0x4001   ROM_4000
+MyCode                            31     R     0x4000     0x401E   ROM_4000
 Lib_Keypad                       117     R      0x800      0x874   EEPROM
 Lib_Encoder                      177     R      0x875      0x925   EEPROM
 Lib_Delay                         56     R      0x926      0x95D   EEPROM
@@ -39,8 +40,8 @@ main.asm__ORG00001                 2     R     0xFFFE     0xFFFF   .absSeg0
 ME305LIBV3.0_Lib_Interface.asm__ORG00001          2     R     0xFFCE     0xFFCF   .absSeg1
 
 Summary of section sizes per section type:
-READ_ONLY (R):         247 (dec:      583)
-READ_WRITE (R/W):      403 (dec:     1027)
+READ_ONLY (R):         264 (dec:      612)
+READ_WRITE (R/W):      404 (dec:     1028)
 
 *********************************************************************************************
 VECTOR-ALLOCATION SECTION
@@ -53,9 +54,13 @@ OBJECT-ALLOCATION SECTION
 ---------------------------------------------------------------------------------------------
 MODULE:                 -- main.asm.o --
 - PROCEDURES:
-     spin                                      4000       0       0       0   MyCode      
-     main                                      4000       2       2       1   MyCode      
+     main                                      4000       6       6       1   MyCode      
+     loop                                      4006       6       6       0   MyCode      
+     sat_add                                   400C       E      14       1   MyCode      
+     skip_negative                             401A       3       3       0   MyCode      
+     skip_overflow                             401D       2       2       0   MyCode      
 - VARIABLES:
+     TMP                                       2400       1       1       2   .data       
      VAR00001                                  FFFE       2       2       0   .text       
 MODULE:                 -- Lib_Delay.asm.o (ME305LIBV3.0.lib) --
 - PROCEDURES:
@@ -101,7 +106,7 @@ MODULE:                 -- Lib_Interface.asm.o (ME305LIBV3.0.lib) --
 MODULE STATISTIC
   Name                                      Data   Code  Const
 ---------------------------------------------------------------------------------------------
-  main.asm.o                                   0      2      2
+  main.asm.o                                   1     31      2
   Lib_Delay.asm.o (ME305LIBV3.0.lib)           0     56      0
   Lib_Encoder.asm.o (ME305LIBV3.0.lib)         0    177      0
   Lib_Keypad.asm.o (ME305LIBV3.0.lib)          3    117      0
@@ -114,12 +119,14 @@ SECTION USE IN OBJECT-ALLOCATION SECTION
 ---------------------------------------------------------------------------------------------
 SECTION: ".text"
   VAR00035 VAR00001 
+SECTION: ".data"
+  TMP 
 SECTION: ".init"
   Entry _Startup STARTUP_PLL STARTUP_SPI0 STARTUP_ATD1 STARTUP_PWM STARTUP_IO 
 SECTION: "LIBRARY_RAM"
   KEYREADY LCHARACTER LKEY_FLG 
 SECTION: "MyCode"
-  main spin 
+  main loop sat_add skip_negative skip_overflow 
 SECTION: "Lib_Keypad"
   INITKEY GETCHAR ISR_KEYPAD VAR00001 
 SECTION: "Lib_Encoder"
@@ -145,8 +152,12 @@ OBJECT LIST SORTED BY ADDRESS
      KEYREADY                                  1000       1       1       0   LIBRARY_RAM 
      LCHARACTER                                1001       1       1       4   LIBRARY_RAM 
      LKEY_FLG                                  1002       1       1       3   LIBRARY_RAM 
-     main                                      4000       2       2       1   MyCode      
-     spin                                      4000       0       0       0   MyCode      
+     TMP                                       2400       1       1       2   .data       
+     main                                      4000       6       6       1   MyCode      
+     loop                                      4006       6       6       0   MyCode      
+     sat_add                                   400C       E      14       1   MyCode      
+     skip_negative                             401A       3       3       0   MyCode      
+     skip_overflow                             401D       2       2       0   MyCode      
      Entry                                     C000       0       0       1   .init       
      _Startup                                  C000      13      19       0   .init       
      STARTUP_PLL                               C013      20      32       1   .init       
@@ -202,6 +213,8 @@ OBJECT-DEPENDENCIES SECTION
 INITKEY                   USES LCHARACTER LKEY_FLG 
 GETCHAR                   USES LCHARACTER LKEY_FLG 
 ISR_KEYPAD                USES VAR00001 LCHARACTER LKEY_FLG 
+loop                      USES sat_add 
+sat_add                   USES TMP 
 _Startup                  USES __SEG_END_SSTACK STARTUP_PLL STARTUP_IO 
                                 STARTUP_SPI0 DISABLE_ENCODER main 
 STARTUP_SPI0              USES DELAY_MILLI 
@@ -233,5 +246,5 @@ STATISTIC SECTION
 ExeFile:
 --------
 Number of blocks to be downloaded: 7
-Total size of all blocks to be downloaded: 583
+Total size of all blocks to be downloaded: 612
 
